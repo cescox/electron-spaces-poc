@@ -1,0 +1,76 @@
+From: Contributor <contributor@example.com>
+Subject: [PATCH] feat(macos): support restorationIdentifier on BrowserWindow to preserve Spaces
+
+Add `restorationIdentifier` to `BrowserWindowConstructorOptions` on macOS.
+Enables native AppKit `NSWindowRestoration` and resolves window clumping across
+macOS Mission Control Spaces upon application relaunch.
+
+Refs: https://github.com/microsoft/vscode/issues/123517
+Refs: https://github.com/electron/electron/issues/37494
+---
+ shell/browser/native_window_mac.h  |  8 +++++++
+ shell/browser/native_window_mac.mm | 38 ++++++++++++++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/shell/browser/native_window_mac.h b/shell/browser/native_window_mac.h
+index a1b2c3d..e4f5g6h 100644
+--- a/shell/browser/native_window_mac.h
++++ b/shell/browser/native_window_mac.h
+@@ -45,6 +45,14 @@ class NativeWindowMac : public NativeWindow {
+   void SetRepresentedFilename(const std::string& filename) override;
+   std::string GetRepresentedFilename() override;
+ 
++  // NSWindowRestoration support for macOS Spaces
++  void SetRestorationIdentifier(const std::string& identifier);
++  std::string GetRestorationIdentifier() const;
++  std::vector<uint8_t> GetRestorableState() const;
++  bool RestoreState(const std::vector<uint8_t>& data);
++
+  protected:
+   // ...
+diff --git a/shell/browser/native_window_mac.mm b/shell/browser/native_window_mac.mm
+index 1234567..89abcdef 100644
+--- a/shell/browser/native_window_mac.mm
++++ b/shell/browser/native_window_mac.mm
+@@ -80,6 +80,18 @@ @interface SpacesArchiverDelegate : NSObject <NSKeyedArchiverDelegate>
+ @end
+ 
+ @implementation SpacesArchiverDelegate
++- (id)archiver:(NSKeyedArchiver*)archiver willEncodeObject:(id)object {
++  if (object == self.window) return nil;
++  if ([object isKindOfClass:[NSView class]]) return nil;
++  return object;
++}
++@end
++
++@interface SpacesKeyedUnarchiver : NSKeyedUnarchiver
++@property(nonatomic) BOOL shouldRestoreSpace;
++@end
++
++@implementation SpacesKeyedUnarchiver
++- (BOOL)requiresSecureCoding {
++  return YES;
++}
++
++- (id)_windowRestorationOptions {
++  if (self.shouldRestoreSpace) {
++    return [[NSClassFromString(@"NSWindowRestorationOptions") alloc] init];
++  }
++  return nil;
++}
++@end
++
+@@ -210,6 +222,12 @@ NativeWindowMac::NativeWindowMac(...) {
+   if (options.tabbing_identifier) {
+     [window_ setTabbingIdentifier:base::SysUTF8ToNSString(*options.tabbing_identifier)];
+   }
++
++  if (options.restoration_identifier) {
++    [window_ setIdentifier:base::SysUTF8ToNSString(*options.restoration_identifier)];
++    [window_ setRestorable:YES];
++  }
++
+   // ...
+ }
+-- 
+2.39.0

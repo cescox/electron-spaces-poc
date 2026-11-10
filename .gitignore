@@ -1,0 +1,8 @@
+node_modules/
+build/
+.DS_Store
+*.log
+*.state.json
+spaces-state.json
+SUBMISSION_DRAFTS.md
+.planning/
